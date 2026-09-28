@@ -24,6 +24,11 @@ IIF_TO_ACCOUNT_TYPE = {
     "AP": AccountType.LIABILITY,
     "OCLIAB": AccountType.LIABILITY,
     "LTLIAB": AccountType.LIABILITY,
+    # QuickBooks 2003 and later emit CCARD for a credit-card account. It is a
+    # liability — the balance is what the cardholder owes — and omitting it made
+    # every credit card fall through to the EXPENSE default, which inflated
+    # expenses and understated liabilities on import.
+    "CCARD": AccountType.LIABILITY,
     "EQUITY": AccountType.EQUITY,
     "INC": AccountType.INCOME,
     "EXP": AccountType.EXPENSE,

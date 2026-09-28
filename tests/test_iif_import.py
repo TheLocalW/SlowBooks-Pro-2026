@@ -545,3 +545,42 @@ def test_iif_reimport_cash_sale_skips_duplicates(db_session, seed_accounts):
     assert second["imported"]["sales_receipts"] == 0
     assert second["imported"]["duplicates_skipped"] == 2
     assert db_session.query(Invoice).count() == 2
+
+
+# A QuickBooks 2003+ credit-card account. CCARD is a liability: the balance is
+# what the cardholder owes. Before this was mapped it fell through to the
+# EXPENSE default, so every credit card inflated expenses and understated
+# liabilities on import.
+CREDIT_CARD_IIF = (
+    "\r\n".join(
+        [
+            "!ACCNT\tNAME\tREFNUM\tTIMESTAMP\tACCNTTYPE\tOBAMOUNT\tDESC\tACCNUM\tSCD\tEXTRA",
+            "ACCNT\tSample Card\t1\t0\tCCARD\t-500.00\t\t9050\t0\t",
+        ]
+    )
+    + "\r\n"
+)
+
+
+def test_credit_card_account_imports_as_liability_not_expense(
+    db_session, seed_accounts
+):
+    from app.services.iif_import import parse_iif, import_accounts
+    from app.models.accounts import Account, AccountType
+
+    parsed = parse_iif(CREDIT_CARD_IIF)
+    result = import_accounts(db_session, parsed["ACCNT"])
+    db_session.commit()
+
+    acct = db_session.query(Account).filter(Account.name == "Sample Card").one()
+    assert acct.account_type == AccountType.LIABILITY
+    assert acct.account_number == "9050"
+    # And the validator must not warn that the type is unknown.
+    assert not [w for w in result.get("warnings", []) if "CCARD" in w]
+
+
+def test_credit_card_type_is_recognised_by_the_validator():
+    from app.services.iif_common import IIF_TO_ACCOUNT_TYPE
+    from app.models.accounts import AccountType
+
+    assert IIF_TO_ACCOUNT_TYPE["CCARD"] == AccountType.LIABILITY
